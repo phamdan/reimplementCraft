@@ -14,6 +14,7 @@ import torch.optim as optim
 import random
 import h5py
 import re
+import matplotlib.pyplot as plt
 # import water
 # from test import test
 from data_loader import ICDAR2015, Synth80k, ICDAR2013
@@ -49,6 +50,10 @@ random.seed(42)
 #         pass
 #     def __call__(self, gt):
 #         image_name = gt['imnames'][0]
+
+def str2bool(v):
+    return v.lower() in ("yes", "y", "true", "t", "1")
+
 parser = argparse.ArgumentParser(description='CRAFT reimplementation')
 
 
@@ -56,8 +61,8 @@ parser.add_argument('--resume', default=None, type=str,
                     help='Checkpoint state_dict file to resume training from')
 parser.add_argument('--batch_size', default=128, type = int,
                     help='batch size of training')
-#parser.add_argument('--cdua', default=True, type=str2bool,
-                    #help='Use CUDA to train model')
+parser.add_argument('--cdua', default=True, type=str2bool,
+                    help='Use CUDA to train model')
 parser.add_argument('--lr', '--learning-rate', default=3.2768e-5, type=float,
                     help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float,
@@ -109,11 +114,12 @@ if __name__ == '__main__':
     dataloader = Synth80k('./pretrain/data/CRAFT-pytorch/Syndata', target_size = 768)
     train_loader = torch.utils.data.DataLoader(
         dataloader,
-        batch_size=4,
+        batch_size=8,
         shuffle=True,
         num_workers=0,
         drop_last=True,
         pin_memory=True)
+    # print("train_loade1", train_loader)
     #batch_syn = iter(train_loader)
     # prefetcher = data_prefetcher(dataloader)
     # input, target1, target2 = prefetcher.next()
@@ -122,7 +128,8 @@ if __name__ == '__main__':
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/CRAFT_net_050000.pth')))
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/1-7.pth')))
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/craft_mlt_25k.pth')))
-    #net.load_state_dict(copyStateDict(torch.load('vgg16_bn-6c64b313.pth')))
+    net.load_state_dict(copyStateDict(torch.load('./pretrain/data/CRAFT-pytorch/synweights/Syndata.pth')))
+    # net.load_state_dict(copyStateDict(torch.load('./pretrain/data/CRAFT-pytorch/vgg16_bn-6c64b313.pth')))
     #realdata = realdata(net)
     # realdata = ICDAR2015(net, '/data/CRAFT-pytorch/icdar2015', target_size = 768)
     # real_data_loader = torch.utils.data.DataLoader(
@@ -134,8 +141,11 @@ if __name__ == '__main__':
     #     pin_memory=True)
     net = net.cuda()
     #net = CRAFT_net
-
     # if args.cdua:
+    # print('__Number CUDA Devices:', torch.cuda.device_count())
+    # print ('Available devices ', torch.cuda.device_count())
+    # print ('Current cuda device ', torch.cuda.current_device())
+
     # net = torch.nn.DataParallel(net,device_ids=[0,1,2,3]).cuda()
     net = torch.nn.DataParallel(net).cuda()
     cudnn.benchmark = True
@@ -161,8 +171,14 @@ if __name__ == '__main__':
     loss_time = 0
     loss_value = 0
     compare_loss = 1
-    for epoch in range(20):
+    #add test
+    draw_epochs=[]
+    draw_loss_train=[]
+    
+    for epoch in range(100):
+        draw_epochs.append(epoch)
         loss_value = 0
+        loss_train=0
         # if epoch % 50 == 0 and epoch != 0:
         #     step_index += 1
         #     adjust_learning_rate(optimizer, args.gamma, step_index)
@@ -190,21 +206,25 @@ if __name__ == '__main__':
             gah_label = gah_label.type(torch.FloatTensor)
             gh_label = Variable(gh_label).cuda()
             gah_label = Variable(gah_label).cuda()
+            
             mask = mask.type(torch.FloatTensor)
             mask = Variable(mask).cuda()
+    
             # affinity_mask = affinity_mask.type(torch.FloatTensor)
             # affinity_mask = Variable(affinity_mask).cuda()
             out, _ = net(images)
-
+      
             optimizer.zero_grad()
-
             out1 = out[:, :, :, 0].cuda()
+         
             out2 = out[:, :, :, 1].cuda()
+        
             loss = criterion(gh_label, gah_label, out1, out2, mask)
-
             loss.backward()
             optimizer.step()
             loss_value += loss.item()
+            loss_train +=  loss.item()
+            # print(loss_train)
             if index % 2 == 0 and index > 0:
                 et = time.time()
                 print('epoch {}:({}/{}) batch || training time for 2 batch {} || training loss {} ||'.format(epoch, index, len(train_loader), et-st, loss_value/2))
@@ -217,13 +237,20 @@ if __name__ == '__main__':
             #     torch.save(net.module.state_dict(),
             #                '/data/CRAFT-pytorch/real_weights/lower_loss.pth'
 
-            if index % 50 == 0 and index != 0 :
+            if index % 150 == 0 and index != 0 :
                 print('Saving state, index:', index)
                 torch.save(net.module.state_dict(),
                            './pretrain/data/CRAFT-pytorch/synweights/synweights' + repr(index) + '.pth')
                 test('./pretrain/data/CRAFT-pytorch/synweights/synweights' + repr(index) + '.pth')
-                #test('/data/CRAFT-pytorch/craft_mlt_25k.pth')
+                # test('/data/CRAFT-pytorch/craft_mlt_25k.pth')
                 # getresult()
+        loss_train=loss_train/(len(train_loader))
+        draw_loss_train.append(loss_train)  
+    print(draw_loss_train)
+    print(draw_epochs)
+    plt.plot(draw_epochs,draw_loss_train)
+    plt.show()
+
 
 
 
